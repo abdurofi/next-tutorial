@@ -4,6 +4,9 @@ import { z } from 'zod'
 import { sql } from '@vercel/postgres'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { signIn } from '@/auth';
+import { AuthError } from 'next-auth';
+ 
 
 const FormSchema = z.object({
     id: z.string(),
@@ -53,7 +56,7 @@ export async function createInvoice(prevState: State, formData: FormData) {
     const amountIncents = amount * 100
     const date = new Date().toISOString().split('T')[0]
 
-    console.log(validatedFields)
+    
     // Insert data into the database
     try {
         await sql`
@@ -72,13 +75,26 @@ export async function createInvoice(prevState: State, formData: FormData) {
     // return { message: 'Invoice created successfully', errors: {} }
 } 
 
-export async function updateInvoice(id: string, formData: FormData) {
-    const { customerId, amount, status } = UpdateInvoice.parse({
-        customerId: formData.get('customerId'),
-        amount: formData.get('amount'),
-        status: formData.get('status'),
+export async function updateInvoice(
+    id: string,
+    prevState: State,
+    formData: FormData
+) {
+    const validatedFields = UpdateInvoice.safeParse({
+    customerId: formData.get('customerId'),
+    amount: formData.get('amount'),
+    status: formData.get('status'),
     })
 
+   
+
+     if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'Missing Fields. Failed to Update Invoice.',
+    };
+     }
+     const { customerId, amount, status } = validatedFields.data;
     const amountIncents = amount * 100
 
     try {
@@ -106,4 +122,23 @@ export async function deleteInvoice(id: string) {
         return { message: 'Database Error: Failed to delete invoice. Please try again' }
         throw error
     }
+}
+
+export async function authenticate(
+  prevState: string | undefined,
+  formData: FormData,
+) {
+  try {
+    await signIn('credentials', formData);
+  } catch (error) {
+    if (error instanceof AuthError) {
+      switch (error.type) {
+        case 'CredentialsSignin':
+          return 'Invalid credentials.';
+        default:
+          return 'Something went wrong.';
+      }
+    }
+    throw error;
+  }
 }
